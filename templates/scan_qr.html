@@ -1,0 +1,190 @@
+{% extends 'base.html' %}
+{% block title %}Scan QR - QR-Attendance Hub{% endblock %}
+{% block extra_css %}
+<style>
+    .scanner-card {
+        background: linear-gradient(135deg, #f0f8ff 0%, #e3f2fd 100%);
+        border-radius: 15px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    }
+    #reader {
+        border: 3px dashed #1976d2 !important;
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.8);
+    }
+    .btn-scan {
+        border-radius: 50px;
+        padding: 12px 30px;
+        font-weight: bold;
+        transition: all 0.3s ease;
+    }
+    .btn-scan:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(25, 118, 210, 0.3);
+    }
+    .status-success {
+        background: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+    }
+    .status-error {
+        background: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+    }
+    .progress-scan {
+        height: 4px;
+        border-radius: 2px;
+    }
+    @media (max-width: 768px) {
+        #reader { width: 100vw !important; height: 60vh !important; border: none !important; }
+        .scanner-card { border-radius: 0; }
+    }
+</style>
+{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-6">
+        <!-- Header Card -->
+        <div class="card mb-4 scanner-card">
+            <div class="card-body text-center">
+                <h1 class="card-title mb-3"><i class="fas fa-qrcode me-2 text-primary"></i>Scan QR to Mark Attendance</h1>
+                <p class="card-text text-muted mb-0"><i class="fas fa-camera me-2"></i>Point your camera at the teacher's QR code. Hold steady for best results.</p>
+            </div>
+        </div>
+
+        <!-- Scanner Card -->
+        <div class="card scanner-card mb-4">
+            <div class="card-body p-4">
+                <div id="reader" class="mx-auto"></div>
+                <div class="row justify-content-center mt-3">
+                    <div class="col-auto">
+                        <button id="startScan" class="btn btn-primary btn-scan">
+                            <i class="fas fa-play me-2"></i>Start Scanner
+                        </button>
+                        <button id="stopScan" class="btn btn-secondary btn-scan" style="display: none;">
+                            <i class="fas fa-stop me-2"></i>Stop Scanner
+                        </button>
+                    </div>
+                </div>
+                <!-- Progress Bar (Fake Scan Indicator) -->
+                <div class="progress mt-3" style="display: none;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" role="progressbar" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status Div -->
+        <div id="status" class="alert status-success d-none text-center mx-auto" style="max-width: 400px;">
+            <i class="fas fa-check-circle me-2"></i><span id="statusText">Ready to scan!</span>
+        </div>
+    </div>
+</div>
+
+<!-- Back Link -->
+<div class="text-center mb-4">
+    <a href="{{ url_for('student_dashboard') }}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
+    </a>
+</div>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+        {% for category, message in messages %}
+            <div class="alert {{ 'status-success' if category == 'success' else 'status-error' }} alert-dismissible fade show mx-auto" style="max-width: 400px;" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+{% endwith %}
+
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script>
+    const html5QrCode = new Html5Qrcode("reader");
+    const startScanBtn = document.getElementById('startScan');
+    const stopScanBtn = document.getElementById('stopScan');
+    const statusDiv = document.getElementById('status');
+    const statusText = document.getElementById('statusText');
+    const progressBar = document.querySelector('.progress');
+    const progressFill = document.querySelector('.progress-bar');
+    let scanInterval;
+
+    startScanBtn.addEventListener('click', () => {
+        html5QrCode.start(
+            { facingMode: "environment" },  // Back camera
+            { fps: 20, qrbox: { width: 300, height: 300 } },  // Faster FPS, larger detection box for quicker scans
+            (decodedText, decodedResult) => {
+                console.log('Scanned:', decodedText);  // Debug: Check decode in console
+                // On scan: Animate progress, then mark
+                progressBar.style.display = 'block';
+                let progress = 0;
+                scanInterval = setInterval(() => {
+                    progress += 10;
+                    progressFill.style.width = progress + '%';
+                    if (progress >= 100) {
+                        clearInterval(scanInterval);
+                        statusText.innerHTML = 'Marking attendance... <i class="fas fa-spinner fa-spin ms-2"></i>';
+                        statusDiv.classList.add('status-success');
+                        statusDiv.classList.remove('d-none');
+
+                        // Auto-submit form
+                        const form = document.createElement('form');
+                        form.method = 'POST';
+                        form.action = '/mark_attendance';
+                        const input = document.createElement('input');
+                        input.type = 'hidden';
+                        input.name = 'totp_code';
+                        input.value = decodedText;
+                        form.appendChild(input);
+                        document.body.appendChild(form);
+                        form.submit();
+                    }
+                }, 80);  // Faster animation
+            },
+            (error) => {
+                // Continuous scan error—show friendly
+                console.error('Scan error:', error);  // Debug log
+                if (error && (error.includes('Permission') || error.includes('NotAllowed'))) {
+                    statusText.innerHTML = 'Camera permission denied. Check browser settings and retry.';
+                    statusDiv.classList.add('status-error');
+                } else if (error && error.includes('No MultiFormat Readers')) {
+                    statusText.innerHTML = 'QR not detected. Move closer, improve lighting, or try again.';
+                    statusDiv.classList.add('status-error');
+                } else {
+                    statusText.innerHTML = 'Scan error: ' + (error || 'Unknown issue') + '. Retry.';
+                    statusDiv.classList.add('status-error');
+                }
+                statusDiv.classList.remove('d-none');
+            }
+        ).then(() => {
+            startScanBtn.style.display = 'none';
+            stopScanBtn.style.display = 'inline-block';
+            statusText.innerHTML = 'Scanning... Hold steady! <i class="fas fa-spinner fa-spin ms-2"></i>';
+            statusDiv.classList.add('status-success');
+            statusDiv.classList.remove('d-none');
+        }).catch((err) => {
+            console.error('Start error:', err);
+            statusText.innerHTML = 'Error starting scanner: ' + err + '. Check camera and retry.';
+            statusDiv.classList.add('status-error');
+            statusDiv.classList.remove('d-none');
+        });
+    });
+
+    stopScanBtn.addEventListener('click', () => {
+        html5QrCode.stop().then(() => {
+            startScanBtn.style.display = 'inline-block';
+            stopScanBtn.style.display = 'none';
+            statusText.innerHTML = 'Scanner stopped.';
+            statusDiv.classList.remove('status-success', 'status-error');
+            progressBar.style.display = 'none';
+            clearInterval(scanInterval);
+        }).catch(err => console.error('Stop error:', err));
+    });
+
+    // Auto-start on mobile for UX (optional - comment out if annoying)
+    if (/Mobi|Android/i.test(navigator.userAgent)) {
+        setTimeout(() => startScanBtn.click(), 1000);  // Delay 1s for load
+    }
+</script>
+{% endblock %}

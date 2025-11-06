@@ -1,0 +1,16 @@
+<h3>Attendees ({{ attendees|length }})</h3>
+{% if attendees %}
+    <ul class="attendees-list">
+    {% for attendee in attendees %}
+        <li class="attendee-item">
+            <span><i class="fas fa-user-check me-2 text-success"></i>{{ attendee.name }}</span>
+            <small class="text-muted">{{ attendee.scan_time.strftime('%H:%M:%S') }}</small>
+        </li>
+    {% endfor %}
+    </ul>
+{% else %}
+    <div class="text-center text-muted py-4">
+        <i class="fas fa-user-clock fa-3x mb-3 opacity-50"></i>
+        <p>No one has scanned yet. Waiting...</p>
+    </div>
+{% endif %}

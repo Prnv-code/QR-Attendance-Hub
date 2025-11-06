@@ -1,0 +1,265 @@
+{% extends 'base.html' %}
+{% block title %}QR Display - {{ qr_session.subject.name }} - QR-Attendance Hub{% endblock %}
+{% block extra_css %}
+<style>
+    .qr-card {
+        background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);
+        border-radius: 15px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    }
+    .qr-img {
+        max-width: 250px;
+        max-height: 250px;
+        border: 3px solid #1976d2;
+        border-radius: 10px;
+        background: white;
+    }
+    .attendees-card {
+        background: linear-gradient(135deg, #f0f8ff 0%, #e8f5e8 100%);
+    }
+    .count-badge {
+        font-size: 1.2em;
+        transition: all 0.3s ease;
+    }
+    .count-badge.live {
+        animation: pulse 1s infinite;
+    }
+    @keyframes pulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.05); }
+        100% { transform: scale(1); }
+    }
+    .expiry-timer {
+        font-family: 'Courier New', monospace;
+        font-size: 1.2em;
+        font-weight: bold;
+    }
+    .expiry-warning {
+        color: #f44336 !important;
+        animation: flash 0.5s infinite;
+    }
+    @keyframes flash {
+        0%, 50% { opacity: 1; }
+        51%, 100% { opacity: 0.5; }
+    }
+    .attendees-list {
+        max-height: 300px;
+        overflow-y: auto;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        background: white;
+    }
+    .attendee-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 12px;
+        border-bottom: 1px solid #f8f9fa;
+    }
+    .attendee-item:last-child { border-bottom: none; }
+    @media (max-width: 768px) {
+        .qr-img { max-width: 200px; max-height: 200px; }
+        .attendees-list { max-height: 200px; }
+    }
+</style>
+<style>
+    /* ... your existing styles ... */
+    .card-header h1 {
+        color: #ffffff !important;  /* Bold white for contrast */
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);  /* Subtle shadow */
+        font-size: 1.5rem;  /* Slightly larger */
+        font-weight: bold;
+    }
+    @media (max-width: 768px) {
+        .card-header h1 { font-size: 1.2rem; }  /* Smaller on mobile */
+    }
+</style>
+{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-10 col-lg-8">
+        <!-- Session Info Header Card -->
+        <div class="card mb-4 qr-card">
+            <div class="card-header bg-primary text-white text-center">
+                <h1 class="mb-0"><i class="fas fa-qrcode me-2"></i>Scan for {{ qr_session.subject.name }} Attendance</h1>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-md-3">
+                        <i class="fas fa-calendar-day fa-2x text-info mb-2"></i>
+                        <p class="mb-0 fw-bold">{{ qr_session.date.strftime('%Y-%m-%d') }}</p>
+                        <small class="text-muted">Date</small>
+                    </div>
+                    <div class="col-md-3">
+                        <i class="fas fa-clock fa-2x text-warning mb-2"></i>
+                        <p class="mb-0 fw-bold">{{ qr_session.start_time }} - {{ qr_session.end_time }}</p>
+                        <small class="text-muted">Time</small>
+                    </div>
+                    <div class="col-md-3">
+                        <i class="fas fa-exclamation-triangle fa-2x {{ 'text-success' if qr_session.is_active else 'text-danger' }} mb-2"></i>
+                        <span class="badge {{ 'bg-success' if qr_session.is_active else 'bg-danger' }} fs-6">
+                            {{ 'Active' if qr_session.is_active else 'Expired' }}
+                        </span>
+                        <small class="text-muted d-block">Status</small>
+                    </div>
+                    <div class="col-md-3">
+                        <i class="fas fa-hourglass-half fa-2x text-secondary mb-2"></i>
+                        <p id="expiryTimer" class="expiry-timer mb-0" style="font-size: 1.1em;">{{ qr_session.expires_at.strftime('%H:%M:%S') }}</p>
+                        <small class="text-muted">Expires</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- QR Code Card -->
+        <div class="card mb-4 qr-card text-center">
+            <div class="card-header bg-info text-white">
+                <h2 class="mb-0"><i class="fas fa-mobile-alt me-2"></i>Display on Board</h2>
+            </div>
+            <div class="card-body p-4">
+                {% if qr_session.is_active %}
+                    <img id="dynamicQR" src="{{ url_for('dynamic_qr', session_id=qr_session.id) }}" alt="Dynamic QR Code" class="qr-img mx-auto d-block mb-3" onerror="this.src='/static/images/placeholder.png'">  <!-- onerror fallback -->
+                    <p class="text-muted">QR refreshes every 60s for security. Students: Scan now!</p>
+                    <div class="text-center mt-3">
+                        <span class="badge bg-secondary fs-6 me-2">Next Refresh:</span>
+                        <span id="refreshTimer" class="badge bg-success fs-6 fw-bold" style="font-family: 'Courier New', monospace;">01:00</span>
+                    </div>
+                {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-clock fa-3x text-danger mb-3"></i>
+                        <h4 class="text-danger mb-2">Session Expired</h4>
+                        <p class="text-muted">QR is no longer active. Create a new session for the next class.</p>
+                        <a href="{{ url_for('create_session') }}" class="btn btn-primary">Create New Session</a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Live Attendees Card -->
+        <div class="card attendees-card">
+            <div class="card-header d-flex justify-content-between align-items-center bg-success text-white">
+                <h2 class="mb-0"><i class="fas fa-users me-2"></i>Current Attendees</h2>
+                <span id="attendeeCount" class="count-badge bg-light text-success fs-5">0</span>
+            </div>
+            <div class="card-body">
+                <div id="attendees">
+                    <div class="text-center text-muted py-4">
+                        <i class="fas fa-user-clock fa-3x mb-3 opacity-50"></i>
+                        <p>No one has scanned yet. Waiting...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Back Link -->
+<div class="text-center mb-4">
+    <a href="{{ url_for('teacher_dashboard') }}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
+    </a>
+</div>
+
+<script>
+    // Single integrated script for QR display
+    const isActive = {{ qr_session.is_active | tojson }};
+    const qrSessionId = {{ qr_session.id }};
+    const expiryTime = new Date('{{ qr_session.expires_at.isoformat() }}').getTime();
+    let refreshTime = 60;  // For QR refresh countdown (active only)
+    let refreshInterval;
+    let attendeesInterval;
+
+    // Expiry Timer (always runs)
+    function updateExpiryTimer() {
+        let now = new Date().getTime();
+        let distance = expiryTime - now;
+        let minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+        let seconds = Math.floor((distance % (1000 * 60)) / 1000);
+        const expiryEl = document.getElementById('expiryTimer');
+        expiryEl.innerHTML = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        
+        if (distance < 120000) {  // < 2 mins
+            expiryEl.classList.add('expiry-warning');
+        }
+        if (distance < 0) {
+            expiryEl.innerHTML = 'EXPIRED';
+            expiryEl.classList.add('text-danger');
+        }
+    }
+
+    // QR Refresh Timer & Auto-Refresh (active only)
+    function updateRefreshTimer() {
+        let minutes = Math.floor(refreshTime / 60);
+        let seconds = refreshTime % 60;
+        const timerEl = document.getElementById('refreshTimer');
+        timerEl.innerHTML = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        
+        // Color change
+        timerEl.className = 'badge fs-6 fw-bold';  // Reset
+        if (refreshTime > 30) {
+            timerEl.classList.add('bg-success');
+        } else if (refreshTime > 10) {
+            timerEl.classList.add('bg-warning');
+        } else {
+            timerEl.classList.add('bg-danger');
+        }
+        
+        if (refreshTime <= 0) {
+            timerEl.innerHTML = 'Refreshing...';
+            timerEl.classList.add('bg-info');
+            refreshQR();
+        }
+    }
+
+    function refreshQR() {
+        const timestamp = new Date().getTime();
+        const newSrc = `/dynamic_qr/${qrSessionId}?t=${timestamp}`;
+        document.getElementById('dynamicQR').src = newSrc;
+        console.log('QR refreshed to:', newSrc);  // Debug
+        refreshTime = 60;  // Reset
+        updateRefreshTimer();
+    }
+
+    // Live Attendees Polling (always runs)
+    function updateAttendees() {
+        fetch(`/get_attendees/${qrSessionId}`)
+            .then(response => response.text())
+            .then(html => {
+                document.getElementById('attendees').innerHTML = html;
+                const count = document.querySelectorAll('.attendee-item').length;
+                const badge = document.getElementById('attendeeCount');
+                badge.textContent = count;
+                if (count > 0) {
+                    badge.classList.add('live');
+                } else {
+                    badge.classList.remove('live');
+                }
+            })
+            .catch(error => console.log('Update error:', error));
+    }
+
+    // Initialize
+    if (!isActive) {
+        // Expired: Hide refresh elements, no QR polling
+        const refreshTimerEl = document.getElementById('refreshTimer');
+        if (refreshTimerEl) refreshTimerEl.style.display = 'none';
+        console.log('Session expired - QR refresh disabled');
+    } else {
+        // Active: Start QR refresh countdown
+        refreshInterval = setInterval(() => {
+            if (refreshTime > 0) {
+                refreshTime--;
+                updateRefreshTimer();
+            }
+        }, 1000);
+        updateRefreshTimer();  // Initial
+    }
+
+    // Always: Expiry timer + attendees polling
+    setInterval(updateExpiryTimer, 1000);
+    updateExpiryTimer();  // Initial
+
+    attendeesInterval = setInterval(updateAttendees, 5000);
+    updateAttendees();  // Initial
+</script>
+{% endblock %}
