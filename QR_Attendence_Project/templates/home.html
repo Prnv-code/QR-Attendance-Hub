@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block content %}
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body text-center">
+                    <h1 class="card-title">Welcome to QR-Attendance Hub!</h1>
+                    <p class="card-text">Streamline your classes with QR scans.</p>
+                    <a href="{{ url_for('login') }}" class="btn btn-primary">Log In</a>
+                    <a href="{{ url_for('signup') }}" class="btn btn-outline-primary ms-2">Sign Up</a>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

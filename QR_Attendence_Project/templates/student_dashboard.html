@@ -1,0 +1,227 @@
+{% extends 'base.html' %}
+{% block title %}Student Dashboard - QR-Attendance Hub{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+{% endblock %}
+{% block content %}
+<!-- Hero Section with Quick Stats -->
+<div class="row mb-4">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-body">
+                <h1 class="card-title mb-0"><i class="fas fa-user-graduate me-2 text-success"></i>Student Dashboard</h1>
+                <p class="text-muted">Your attendance overview—keep crushing it!</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="fas fa-chart-pie me-2"></i>Quick Stats</h5>
+            </div>
+            <div class="card-body text-center">
+                <p class="mb-1"><i class="fas fa-check-circle me-2 text-success"></i>{{ total_present|default(0) }} Present</p>
+                <p class="mb-1"><i class="fas fa-times-circle me-2 text-danger"></i>{{ subject_stats.values()|sum(attribute='missed')|default(0) }} Missed</p>
+                <p class="mb-0"><i class="fas fa-percentage me-2 text-info"></i>{{ overall_percent|default(0) }}% Overall</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Scan QR Button (Prominent) -->
+<div class="row mb-4">
+    <div class="col-12 text-center">
+        <a href="{{ url_for('scan_qr') }}" class="btn btn-success btn-lg px-5">
+            <i class="fas fa-qrcode me-2"></i>Scan QR Now
+        </a>
+    </div>
+</div>
+
+<!-- Attendance % by Subject (Pie Chart Card) -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="mb-0"><i class="fas fa-chart-pie me-2 text-warning"></i>Attendance % by Subject</h2>
+            </div>
+            <div class="card-body">
+                {% if subject_stats %}
+                    <div class="row">
+                        <div class="col-md-8">
+                            <canvas id="subjectPie" height="250"></canvas>
+                        </div>
+                        <div class="col-md-4">
+                            <ul class="list-group list-group-flush">
+                                {% for subject, stats in subject_stats.items() %}
+                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                        <span><i class="fas fa-book me-1 text-primary"></i>{{ subject }}</span>
+                                        <div>
+                                            <span class="badge bg-success me-1">{{ stats.percent }}%</span>
+                                            <small class="text-muted">({{ stats.present }}/{{ stats.total }})</small>
+                                        </div>
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    </div>
+                    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+                    <script>
+                        const ctx = document.getElementById('subjectPie').getContext('2d');
+                        const labels = [{% for subject in subject_stats.keys() %}'{{ subject }}', {% endfor %}];
+                        const data = [{% for stats in subject_stats.values() %}{{ stats.percent }}, {% endfor %}];
+                        new Chart(ctx, {
+                            type: 'pie',
+                            data: {
+                                labels: labels,
+                                datasets: [{
+                                    data: data,
+                                    backgroundColor: ['#4caf50', '#ff9800', '#2196f3', '#f44336', '#9c27b0']
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: {
+                                    legend: { display: false },  // Legend in sidebar instead
+                                    tooltip: { callbacks: { label: ctx => `${ctx.label}: ${ctx.parsed}%` } }
+                                }
+                            }
+                        });
+                    </script>
+                {% else %}
+                    <div class="text-center text-muted py-4">
+                        <i class="fas fa-chart-pie fa-3x mb-3 opacity-50"></i>
+                        <p>No attendance data yet. Scan a QR to track your progress!</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Your History Table -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h2 class="mb-0"><i class="fas fa-history me-2 text-secondary"></i>Your History</h2>
+            </div>
+            <div class="card-body">
+                <!-- Filters -->
+                <div class="row mb-3">
+                    <div class="col-md-3">
+                        <label class="form-label">Subject</label>
+                        <select class="form-select" id="subjectFilter">
+                            <option value="">All Subjects</option>
+                            {% for subject, stats in subject_stats.items() %}
+                                <option value="{{ subject }}">{{ subject }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Date</label>
+                        <input type="date" class="form-control" id="dateFilter">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">&nbsp;</label>
+                        <button class="btn btn-outline-secondary w-100" onclick="filterHistory()"><i class="fas fa-search me-1"></i>Filter</button>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">&nbsp;</label>
+                        <button class="btn btn-outline-danger w-100" onclick="clearFilters()"><i class="fas fa-times me-1"></i>Clear</button>
+                    </div>
+                </div>
+
+                <!-- History Table -->
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Subject</th>
+                                <th>Date</th>
+                                <th>Time</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if attendances %}
+                                {% for att in attendances %}
+                                    <tr data-subject="{{ att.session.subject.name }}" data-date="{{ att.session.date.strftime('%Y-%m-%d') }}">
+                                        <td><i class="fas fa-book me-1 text-primary"></i>{{ att.session.subject.name }}</td>
+                                        <td>{{ att.session.date.strftime('%Y-%m-%d') }}</td>
+                                        <td>{{ att.session.start_time }} - {{ att.session.end_time }}</td>
+                                        <td>
+                                            <span class="badge bg-success">
+                                                <i class="fas fa-check-circle me-1 text-success"></i>Present
+                                            </span>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="4" class="text-center text-muted py-4">
+                                        <i class="fas fa-history fa-3x mb-3 opacity-50"></i>
+                                        <p>No history yet. Scan to build your record!</p>
+                                    </td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Upcoming Sessions Card -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="mb-0"><i class="fas fa-calendar me-2 text-info"></i>Upcoming Sessions</h2>
+            </div>
+            <div class="card-body">
+                {% if active_sessions %}
+                    <ul class="list-group list-group-flush">
+                        {% for session in active_sessions[:5] %}  <!-- Limit to 5 -->
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <span><i class="fas fa-clock me-2 text-warning"></i>{{ session.subject.name }} on {{ session.date }} ({{ session.start_time }} - {{ session.end_time }})</span>
+                                <span class="badge bg-info">{{ 'Active' if session.is_active else 'Expired' }}</span>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <div class="text-center text-muted py-4">
+                        <i class="fas fa-calendar-times fa-3x mb-3 opacity-50"></i>
+                        <p>No upcoming sessions. Check back soon!</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filter JS for History -->
+<script>
+    function filterHistory() {
+        const subject = document.getElementById('subjectFilter').value;
+        const date = document.getElementById('dateFilter').value;
+        const rows = document.querySelectorAll('tbody tr');
+        rows.forEach(row => {
+            const subjectCell = row.dataset.subject;
+            const dateCell = row.dataset.date;
+            let show = true;
+            if (subject && subject !== '' && !subjectCell.includes(subject)) show = false;
+            if (date && date !== '' && dateCell !== date) show = false;
+            row.style.display = show ? '' : 'none';
+        });
+    }
+
+    function clearFilters() {
+        document.getElementById('subjectFilter').value = '';
+        document.getElementById('dateFilter').value = '';
+        const rows = document.querySelectorAll('tbody tr');
+        rows.forEach(row => row.style.display = '');
+    }
+</script>
+{% endblock %}

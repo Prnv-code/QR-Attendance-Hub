@@ -1,0 +1,224 @@
+{% extends 'base.html' %}
+{% block title %}Teacher Dashboard - QR-Attendance Hub{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+{% endblock %}
+{% block content %}
+<!-- Hero Section with Quick Stats -->
+<div class="row mb-4">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-body">
+                <h1 class="card-title mb-0"><i class="fas fa-tachometer-alt me-2 text-primary"></i>Teacher Dashboard</h1>
+                <p class="text-muted">Welcome back! Manage your classes here.</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fas fa-chart-line me-2"></i>Quick Stats</h5>
+            </div>
+            <div class="card-body text-center">
+                <p class="mb-1"><i class="fas fa-calendar-check me-2 text-success"></i>{{ active_sessions|default(0) }} Active Sessions</p>
+                <p class="mb-1"><i class="fas fa-users me-2 text-info"></i>{{ total_attendees|default(0) }} Total Attendees</p>
+                <p class="mb-0"><i class="fas fa-list me-2 text-secondary"></i>{{ total_sessions|default(0) }} Total Sessions</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Subjects Section -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h2 class="mb-0"><i class="fas fa-book-open me-2 text-primary"></i>Your Subjects</h2>
+                <a href="{{ url_for('add_subject') }}" class="btn btn-outline-primary btn-sm"><i class="fas fa-plus me-1"></i>Add New</a>
+            </div>
+            <div class="card-body">
+                {% if subjects %}
+                    <ul class="list-group list-group-flush">
+                        {% for subject in subjects %}
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <span><i class="fas fa-tag me-2 text-primary"></i>{{ subject.name }}</span>
+                                <small class="text-muted badge bg-light">ID: {{ subject.id }}</small>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <div class="text-center text-muted py-4">
+                        <i class="fas fa-book fa-3x mb-3 opacity-50"></i>
+                        <p>No subjects yet. <a href="{{ url_for('add_subject') }}">Add one to get started!</a></p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Sessions Section with Filters and Table -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h2 class="mb-0"><i class="fas fa-clock me-2 text-info"></i>Your Sessions</h2>
+                <a href="{{ url_for('create_session') }}" class="btn btn-primary"><i class="fas fa-plus me-1"></i>Create New</a>
+            </div>
+            <div class="card-body">
+                <!-- Filters -->
+                <div class="row mb-3">
+                    <div class="col-md-3">
+                        <label class="form-label">Subject</label>
+                        <select class="form-select" id="subjectFilter">
+                            <option value="">All Subjects</option>
+                            {% for subject in subjects %}
+                                <option value="{{ subject.id }}">{{ subject.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Date</label>
+                        <input type="date" class="form-control" id="dateFilter" value="{{ today|default('') }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">&nbsp;</label>
+                        <button class="btn btn-outline-secondary w-100" onclick="filterSessions()"><i class="fas fa-search me-1"></i>Filter</button>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">&nbsp;</label>
+                        <button class="btn btn-outline-danger w-100" onclick="clearFilters()"><i class="fas fa-times me-1"></i>Clear</button>
+                    </div>
+                </div>
+
+                <!-- Sessions Table -->
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Subject</th>
+                                <th>Date</th>
+                                <th>Time</th>
+                                <th>Attendees</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if sessions %}
+                                {% for session in sessions %}
+                                    <tr data-subject="{{ session.subject.id }}" data-date="{{ session.date.strftime('%Y-%m-%d') }}">
+                                        <td><i class="fas fa-book me-1 text-primary"></i>{{ session.subject.name }}</td>
+                                        <td>{{ session.date.strftime('%Y-%m-%d') }}</td>
+                                        <td>{{ session.start_time }} - {{ session.end_time }}</td>
+                                        <td><span class="badge {{ 'bg-success' if session.attendee_count > 0 else 'bg-warning' }} fs-6">{{ session.attendee_count }}</span></td>
+                                        <td>
+                                            <span class="badge {{ 'bg-success' if session.is_active else 'bg-danger' }}">
+                                                <i class="fas fa-circle {{ 'text-success' if session.is_active else 'text-danger' }} me-1"></i>
+                                                {{ 'Active' if session.is_active else 'Expired' }}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <a href="{{ url_for('generate_qr', session_id=session.id) }}" class="btn btn-success btn-sm me-1" title="Generate QR">
+                                                <i class="fas fa-qrcode"></i>
+                                            </a>
+                                            <a href="{{ url_for('export_csv', session_id=session.id) }}" class="btn btn-warning btn-sm" title="Export CSV">
+                                                <i class="fas fa-download"></i>
+                                            </a>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="6" class="text-center text-muted py-4">
+                                        <i class="fas fa-calendar-times fa-3x mb-3 opacity-50"></i>
+                                        <p>No sessions yet. <a href="{{ url_for('create_session') }}">Create one!</a></p>
+                                    </td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Session Attendee Overview Chart -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="mb-0"><i class="fas fa-chart-bar me-2 text-success"></i>Session Attendee Overview</h2>
+            </div>
+            <div class="card-body">
+                {% if sessions %}
+                    <canvas id="sessionBar" height="300"></canvas>
+                    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+                    <script>
+                        const ctxBar = document.getElementById('sessionBar').getContext('2d');
+                        const sessionLabels = [{% for s in sessions %}'{{ s.subject.name }} - {{ s.date.strftime("%m/%d") }}', {% endfor %}];
+                        const counts = [{% for s in sessions %}{{ s.attendee_count }}, {% endfor %}];
+                        new Chart(ctxBar, {
+                            type: 'bar',
+                            data: {
+                                labels: sessionLabels,
+                                datasets: [{
+                                    label: 'Attendees',
+                                    data: counts,
+                                    backgroundColor: 'rgba(25, 118, 210, 0.8)',
+                                    borderColor: '#1976d2',
+                                    borderWidth: 1
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                scales: {
+                                    y: {
+                                        beginAtZero: true,
+                                        ticks: { stepSize: 1 }
+                                    }
+                                },
+                                plugins: {
+                                    legend: { display: false },
+                                    tooltip: { mode: 'index', intersect: false }
+                                }
+                            }
+                        });
+                    </script>
+                {% else %}
+                    <div class="text-center text-muted py-4">
+                        <i class="fas fa-chart-line fa-3x mb-3 opacity-50"></i>
+                        <p>No data yet. Create sessions and track attendance!</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filter JS -->
+<script>
+    function filterSessions() {
+        const subjectId = document.getElementById('subjectFilter').value;
+        const date = document.getElementById('dateFilter').value;
+        const rows = document.querySelectorAll('tbody tr');
+        rows.forEach(row => {
+            const subjectCell = row.dataset.subject;
+            const dateCell = row.dataset.date;
+            let show = true;
+            if (subjectId && subjectId !== '' && subjectCell !== subjectId) show = false;
+            if (date && date !== '' && dateCell !== date) show = false;
+            row.style.display = show ? '' : 'none';
+        });
+    }
+
+    function clearFilters() {
+        document.getElementById('subjectFilter').value = '';
+        document.getElementById('dateFilter').value = '';
+        const rows = document.querySelectorAll('tbody tr');
+        rows.forEach(row => row.style.display = '');
+    }
+</script>
+{% endblock %}
